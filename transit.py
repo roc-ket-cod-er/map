@@ -6,7 +6,7 @@ from bisect import bisect_left
 from helpers._transit.make_graph import make_graph
 from helpers.distance import dist_time
 from helpers.print_color import bold, green, red, blue, magenta
-from helpers.time_management import time_to_seconds
+from helpers.time_management import time_to_seconds, seconds_to_time
 from datetime import datetime
 import time
 
@@ -129,108 +129,152 @@ if route is None:
     raise SystemExit(1)
 
 i = 1
+# Print the route
+i = 1
+
 total = {
     "stops": 1,
-    "time": 0
+    "time": 0,
+    "departure_time": None,
+    "arrival_time": None,
+    "first stop": None
 }
 
-while True:
-    stop, coords, info = route[i-1]
+
+def print_leg(total, stop_name):
+    """Print the currently accumulated leg."""
+
+    fs = total["first stop"]
+
+    if fs is None:
+        return
+
+    # Transit
+    if fs[3]:
+        departure = (
+            seconds_to_time(total["departure_time"])
+            if total["departure_time"] is not None
+            else "?"
+        )
+
+        if total["arrival_time"] is not None:
+            arrival = seconds_to_time(total["arrival_time"])
+        else:
+            # Fall back to departure + accumulated travel time
+            arrival = seconds_to_time(
+                total["departure_time"] + total["time"] * 60
+            )
+
+        print(blue(
+            f"Ride {total['stops']} stops "
+            f"({departure} → {arrival}, "
+            f"{total['time']:.1f} minutes) "
+            f"from \"{fs[2]}\" to \"{stop_name}\" "
+            f"via {fs[0][0]}'s route {fs[3]['route']} "
+            f"towards {fs[3]['headsign']}"
+        ))
+
+    # Walking
+    else:
+        if total["time"] > 0.1:
+            print(green(
+                f"Walk {total['time']:.1f} minutes "
+                f"from \"{fs[2]}\" to \"{stop_name}\""
+            ))
+        else:
+            print(magenta(
+                f"Transfer from \"{fs[2]}\" to \"{stop_name}\""
+            ))
+
+
+while i < len(route):
+
+    # Current stop
+    stop, coords, info = route[i - 1]
 
     stop_agency, stop_id = stop.split(":")
     stop_name = coords[2]
     stop_agency = stop_agency.split("_")
 
-    if i != len(route):
-        dnext = route[i]
-        ns    = dnext[0]
-        nc    = dnext[1]
-        ni    = dnext[2]
+    # Next stop and the edge connecting us to it
+    dnext = route[i]
 
-        ns_agency, ns_id = ns.split(":")
-        ns_agency = ns_agency.split("_")
-        ns_name = nc[2]
+    ns = dnext[0]
+    nc = dnext[1]
+    ni = dnext[2] or {}
 
-        _ni   = ni   if ni   else {}
-        _info = info if info else {}
+    ns_agency, ns_id = ns.split(":")
+    ns_agency = ns_agency.split("_")
+    ns_name = nc[2]
 
-        if (stop_agency == ns_agency and _ni.get("route", None) == _info.get("route", None)) or ("route" not in ni and "route" not in info):
-            total["stops"] += 1
-            total["time"]  += ni["distance"]
-            if not "first stop" in total:
-                total["first stop"] = [stop_agency, stop_id, stop_name, ni["route"] if "route" in ni else None]
-            elif not total["first stop"][3]:
-                total["first stop"][3] = ni["route"] if "route" in ni else None
-        else:
-            fs = total['first stop']
-            if fs[3]:
-                print(blue(
-                    f"Ride {total["stops"]} stops ({total["time"]:.1f} minutes) from \"{fs[2]}\" to \"{stop_name}\" via {fs[0][0]}'s route {fs[3]["route"]} towards {fs[3]["headsign"]}"
-                ))
-            else:
-                if total["time"] != 0:
-                    print(green(
-                        f"Walk {total["time"]:.1f} minutes from \"{fs[2]}\" to \"{stop_name}\""
-                    ))
-                else:
-                    print(magenta(
-                        f"Transfer from \"{fs[2]}\" to \"{stop_name}\""
-                    ))
-                
-            total = {
-                "stops": 1,
-                "time": 0
-            }
+    _info = info or {}
 
-            total["first stop"] = [stop_agency, stop_id, stop_name, ni["route"] if "route" in ni else None]
-            # same here — the trailing i += 1 at the bottom of the loop already advances it
+    # Is this edge part of the same leg?
+    same_leg = (
+        stop_agency == ns_agency
+        and ni.get("route") == _info.get("route")
+    ) or (
+        "route" not in ni
+        and "route" not in _info
+    )
 
-        # if ni:
-        #     if "route" in ni:
-        #         print(
-        #             f"Step {i}: From {stop_name} (run by {stop_agency[0]}, stop id \"{stop_id}\"), "
-        #             f"ride route {ni["route"]['route']} towards {ni["route"]['headsign']} "
-        #             f"to {ns_name} (run by {ns_agency[0]}, stop id \"{ns_id}\") "
-        #             f"in {ni["distance"]} mins. trip id: {ni["trip_id"]}" if ni else ""
-        #         )
-        #     else:
-        #         print(green(
-        #             f"Step {i}: From {stop_name} (run by {stop_agency[0]}, stop id \"{stop_id}\"), walk {ni["distance"]:.1f} minutes "
-        #             f"to {ns_name} (run by {ns_agency[0]}, stop id \"{ns_id})\" "
-        #         ))
-        # else:
-        #     print(red(f"Step {i}: From {stop_name} (run by {stop_agency[0]}, stop id \"{stop_id}\"), "
-        #               f"ride to {ns_name} (run by {ns_agency[0]}, stop id {ns_id}) "
-        #               f"in {ni["distance"]} mins. trip id: {ni["trip_id"]}" if ni else ""
-        #     ))
-    else:
-        fs = total['first stop']
-        dnext = route[i-1]
-        ns    = dnext[0]
-        nc    = dnext[1]
-        ni    = dnext[2]
+    # Starting a new leg
+    if total["first stop"] is None:
+        total["first stop"] = [
+            stop_agency,
+            stop_id,
+            stop_name,
+            ni.get("route")
+        ]
 
-        ns_agency, ns_id = ns.split(":")
-        ns_agency = ns_agency.split("_")
-        ns_name = nc[2]
+    # Add this edge to the current leg
+    total["stops"] += 1
+    total["time"] += ni.get("distance", 0)
 
-        _ni   = ni   if ni   else {}
-        _info = info if info else {}
+    # If this is transit, record the scheduled times
+    if "departure_time" in ni:
 
-        if fs[3]:
-            print(blue(
-                f"Ride {total["stops"]} stops ({total["time"]:.1f} minutes) from \"{fs[2]}\" to \"{stop_name}\" via {fs[0][0]}'s route {fs[3]["route"]} towards {fs[3]["headsign"]}"
-            ))
-        else:
-            if total["time"] < 0.1:
-                print(green(
-                    f"Walk {total["time"]:.1f} minutes from \"{fs[2]}\" to \"{stop_name}\""
-                ))
-            else:
-                print(magenta(
-                    f"Transfer from \"{fs[2]}\" to \"{stop_name}\""
-                ))
-        break
-    i+=1
+        # First transit edge = departure from the first stop
+        if total["departure_time"] is None:
+            total["departure_time"] = ni["departure_time"]
+
+        # Last known arrival time
+        if ni.get("arrival_time") is not None:
+            total["arrival_time"] = ni["arrival_time"]
+
+    # If this edge continues the current leg, keep going
+    if same_leg:
+        i += 1
+        continue
+
+    # Otherwise, this edge starts a different leg.
+    # The current leg ends at the current stop.
+    print_leg(total, stop_name)
+
+    # Start a fresh leg at the current stop
+    total = {
+        "stops": 1,
+        "time": 0,
+        "departure_time": None,
+        "arrival_time": None,
+        "first stop": [
+            stop_agency,
+            stop_id,
+            stop_name,
+            ni.get("route")
+        ]
+    }
+    i += 1
+
+
+# Print the final leg
+if total["first stop"] is not None:
+
+    # The final destination is the last node in the route
+    final_stop, final_coords, final_info = route[-1]
+
+    final_name = final_coords[2]
+
+    print_leg(total, final_name)
 
 print(f"\nEstimated Commute Time: {total_time:.1f} minutes")
