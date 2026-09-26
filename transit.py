@@ -222,7 +222,7 @@ while True:
                 f"Ride {total["stops"]} stops ({total["time"]:.1f} minutes) from \"{fs[2]}\" to \"{stop_name}\" via {fs[0][0]}'s route {fs[3]["route"]} towards {fs[3]["headsign"]}"
             ))
         else:
-            if total["time"] != 0:
+            if total["time"] < 0.1:
                 print(green(
                     f"Walk {total["time"]:.1f} minutes from \"{fs[2]}\" to \"{stop_name}\""
                 ))
@@ -233,5 +233,4 @@ while True:
         break
     i+=1
 
-# print(f"\nOptimal Transit Line: {' --> '.join([f'{stop_id} @ ({coords[0]}, {coords[1]})' for stop_id, coords, _ in route])}")
 print(f"\nEstimated Commute Time: {total_time:.1f} minutes")
