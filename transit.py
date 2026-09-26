@@ -121,8 +121,8 @@ st = time.monotonic_ns()
 route, total_time = transit_a_star(graph, "grt_busses:2088", "go:UN", safety_buffer=2, start_time=53600)
 # print(time.monotonic_ns() - st)
 
-# for item in route:
-#     print(item)
+for item in route:
+    print(item)
 
 if route is None:
     print(red("No route found between the given start and destination."))
@@ -159,11 +159,13 @@ def print_leg(total, stop_name):
 
         if total["arrival_time"] is not None:
             arrival = seconds_to_time(total["arrival_time"])
-        else:
+        elif total["departure_time"] is not None:
             # Fall back to departure + accumulated travel time
             arrival = seconds_to_time(
                 total["departure_time"] + total["time"] * 60
             )
+        else:
+            arrival = "?"
 
         print(blue(
             f"Ride {total['stops']} stops "
@@ -189,16 +191,13 @@ def print_leg(total, stop_name):
 
 while i < len(route):
 
-    # Current stop
     stop, coords, info = route[i - 1]
 
     stop_agency, stop_id = stop.split(":")
     stop_name = coords[2]
     stop_agency = stop_agency.split("_")
 
-    # Next stop and the edge connecting us to it
     dnext = route[i]
-
     ns = dnext[0]
     nc = dnext[1]
     ni = dnext[2] or {}
@@ -209,60 +208,41 @@ while i < len(route):
 
     _info = info or {}
 
-    # Is this edge part of the same leg?
-    same_leg = (
-        stop_agency == ns_agency
-        and ni.get("route") == _info.get("route")
-    ) or (
-        "route" not in ni
-        and "route" not in _info
-    )
-
-    # Starting a new leg
     if total["first stop"] is None:
-        total["first stop"] = [
-            stop_agency,
-            stop_id,
-            stop_name,
-            ni.get("route")
-        ]
+        # True start of the journey — this edge always belongs to the
+        # leg we're about to open; there's no prior route to compare against.
+        total["first stop"] = [stop_agency, stop_id, stop_name, ni.get("route")]
+        same_leg = True
+    else:
+        same_leg = (
+            stop_agency == ns_agency
+            and ni.get("route") == _info.get("route")
+        ) or (
+            "route" not in ni
+            and "route" not in _info
+        )
 
-    # Add this edge to the current leg
-    total["stops"] += 1
-    total["time"] += ni.get("distance", 0)
-
-    # If this is transit, record the scheduled times
-    if "departure_time" in ni:
-
-        # First transit edge = departure from the first stop
-        if total["departure_time"] is None:
-            total["departure_time"] = ni["departure_time"]
-
-        # Last known arrival time
-        if ni.get("arrival_time") is not None:
-            total["arrival_time"] = ni["arrival_time"]
-
-    # If this edge continues the current leg, keep going
     if same_leg:
+        total["stops"] += 1
+        total["time"] += ni.get("distance", 0)
+
+        if "departure_time" in ni:
+            if total["departure_time"] is None:
+                total["departure_time"] = ni["departure_time"]
+            if ni.get("arrival_time") is not None:
+                total["arrival_time"] = ni["arrival_time"]
+
         i += 1
         continue
 
-    # Otherwise, this edge starts a different leg.
-    # The current leg ends at the current stop.
     print_leg(total, stop_name)
 
-    # Start a fresh leg at the current stop
     total = {
-        "stops": 1,
-        "time": 0,
-        "departure_time": None,
-        "arrival_time": None,
-        "first stop": [
-            stop_agency,
-            stop_id,
-            stop_name,
-            ni.get("route")
-        ]
+        "stops": 2,
+        "time": ni.get("distance", 0),
+        "departure_time": ni.get("departure_time"),
+        "arrival_time": ni.get("arrival_time"),
+        "first stop": [stop_agency, stop_id, stop_name, ni.get("route")]
     }
     i += 1
 
