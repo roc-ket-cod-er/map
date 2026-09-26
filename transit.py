@@ -23,27 +23,16 @@ stops = data.node_positions
 def coordify(stopthingy):
     return stopthingy[0:2]
 
-def transit_a_star(graph, start_id, goal_id, safety_buffer=2, start_time=None):
-    """
-    safety_buffer: minutes of slack you need between arriving at a stop and a trip's
-    departure for that connection to count as catchable at all — this REPLACES the old
-    flat transfer_penalty. It's no longer "always add N minutes when switching routes";
-    instead the actual cost of a transfer is however long you genuinely have to wait for
-    the next trip that respects this buffer, looked up from the real schedule.
-    """
+def transit_a_star(graph, start_id, goal_id, safety_buffer=4, start_time=None):
     if start_time is None:
         start_time = time_to_seconds(datetime.now().strftime("%H:%M:%S"))  # seconds since midnight
 
     # Queue stores: (f_score, tie_breaker, current_node, current_trip_id, current_edge_data)
-    # The tie_breaker is a unique increasing counter — without it, heapq falls back to
-    # comparing trip_id (which mixes None and strings) or edge dicts when priorities tie,
-    # and neither of those support '<'.
     tie_breaker = count()
     priority_queue = []
     heappush(priority_queue, (0, next(tie_breaker), start_id, None, None))
 
     # Track lowest g_score (minutes elapsed since start_time) per state: (node_id, trip_id)
-    # trip_id is None when you're not currently riding anything (start, or just walked).
     graph_costs = {(start_id, None): 0}
 
     # Path reconstructor: (node, trip_id) -> (prev_node, prev_trip_id, edge_data)
@@ -86,9 +75,7 @@ def transit_a_star(graph, start_id, goal_id, safety_buffer=2, start_time=None):
                     else:
                         # Boarding a NEW trip on this route (first ride, transfer, or a later run
                         # of the same route number). trips is sorted by departure_time, so the
-                        # earliest catchable one is found in O(log n) instead of trying all of
-                        # them — a later trip on the same route can never beat the earliest one
-                        # that's actually catchable.
+                        # earliest catchable one is found in O(log n) instead of trying all of them
                         earliest_catchable = current_arrival_abs
                         if current_trip is not None:
                             earliest_catchable += safety_buffer * 60
@@ -118,7 +105,7 @@ def transit_a_star(graph, start_id, goal_id, safety_buffer=2, start_time=None):
     return None, float('inf')
 
 st = time.monotonic_ns()
-route, total_time = transit_a_star(graph, "grt_busses:2088", "go:UN", safety_buffer=2, start_time=53600)
+route, total_time = transit_a_star(graph, "grt_busses:2088", "go:UN", safety_buffer=2, start_time=54180)
 # print(time.monotonic_ns() - st)
 
 for item in route:
@@ -128,8 +115,6 @@ if route is None:
     print(red("No route found between the given start and destination."))
     raise SystemExit(1)
 
-i = 1
-# Print the route
 i = 1
 
 total = {
